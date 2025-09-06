@@ -15,6 +15,7 @@ import contextlib
 
 from aiogram import Dispatcher
 from aiogram.types import Message, CallbackQuery, ChatType, InlineKeyboardMarkup, InlineKeyboardButton, InputFile
+from aiogram.utils.exceptions import MessageNotModified
 
 from bot.database.methods import (
     get_role_id_by_name, create_user, check_role, check_user,
@@ -82,6 +83,12 @@ async def request_feedback(bot, user_id: int, lang: str, item_name: str) -> None
 
 
 async def schedule_feedback(bot, user_id: int, lang: str, item_name: str) -> None:
+    """Send feedback request after a short delay.
+
+    The sleep duration controls how long to wait before prompting the user
+    for a review. Change the value below to adjust the delay (in seconds).
+    """
+    await asyncio.sleep(60)
     """Send feedback request after a 30-minute delay."""
     await asyncio.sleep(1800)
     await request_feedback(bot, user_id, lang, item_name)
@@ -1199,12 +1206,15 @@ async def buy_item_callback_handler(call: CallbackQuery):
                     await bot.send_message(user_id, t(lang, 'achievement_unlocked', name=t(lang, 'achievement_gift_sent')))
                     logger.info(f"User {user_id} unlocked achievement gift_sent")
             else:
-                await bot.edit_message_text(
-                    chat_id=call.message.chat.id,
-                    message_id=msg,
-                    text=f'✅ Item purchased. 📦 Total Purchases: {purchases}',
-                    reply_markup=back(f'item_{item_name}')
-                )
+                try:
+                    await bot.edit_message_text(
+                        chat_id=call.message.chat.id,
+                        message_id=msg,
+                        text=f'✅ Item purchased. 📦 Total Purchases: {purchases}',
+                        reply_markup=back(f'item_{item_name}')
+                    )
+                except MessageNotModified:
+                    pass
             TgConfig.STATE.pop(f'{user_id}_gift_to', None)
             TgConfig.STATE.pop(f'{user_id}_gift_name', None)
             if not has_user_achievement(user_id, 'first_purchase'):
@@ -1956,12 +1966,15 @@ async def checking_payment(call: CallbackQuery):
                     if gift_to:
                         await bot.send_message(user_id, t(lang, 'gift_sent', user=f'@{gift_name}'), reply_markup=back('profile'))
                     else:
-                        await bot.edit_message_text(
-                            chat_id=call.message.chat.id,
-                            message_id=message_id,
-                            text=f'✅ Item purchased. 📦 Total Purchases: {purchases}',
-                            reply_markup=back('profile')
-                        )
+                        try:
+                            await bot.edit_message_text(
+                                chat_id=call.message.chat.id,
+                                message_id=message_id,
+                                text=f'✅ Item purchased. 📦 Total Purchases: {purchases}',
+                                reply_markup=back('profile')
+                            )
+                        except MessageNotModified:
+                            pass
                     update_lottery_tickets(user_id, 1)
                     await bot.send_message(user_id, t(lang, 'lottery_ticket_awarded'))
                     process_purchase_streak(user_id)
@@ -1982,12 +1995,15 @@ async def checking_payment(call: CallbackQuery):
 
 
 
-                    await bot.edit_message_text(
-                        chat_id=call.message.chat.id,
-                        message_id=message_id,
-                        text=f'✅ Item purchased. 📦 Total Purchases: {purchases}',
-                        reply_markup=back('profile')
-                    )
+                    try:
+                        await bot.edit_message_text(
+                            chat_id=call.message.chat.id,
+                            message_id=message_id,
+                            text=f'✅ Item purchased. 📦 Total Purchases: {purchases}',
+                            reply_markup=back('profile')
+                        )
+                    except MessageNotModified:
+                        pass
                     TgConfig.STATE.pop(f'{user_id}_pending_item', None)
                     TgConfig.STATE.pop(f'{user_id}_price', None)
                     TgConfig.STATE.pop(f'{user_id}_promo_applied', None)
