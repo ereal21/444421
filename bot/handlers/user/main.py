@@ -1085,6 +1085,17 @@ async def buy_item_callback_handler(call: CallbackQuery):
                 add_bought_item(value_data['item_name'], f'Gifted to @{gift_name}', item_price, user_id, formatted_time)
             else:
                 add_bought_item(value_data['item_name'], value_data['value'], item_price, user_id, formatted_time)
+
+            referral_id = get_user_referral(user_id)
+            if referral_id and TgConfig.REFERRAL_PERCENT:
+                reward = round(item_price * TgConfig.REFERRAL_PERCENT / 100, 2)
+                update_balance(referral_id, reward)
+                ref_lang = get_user_language(referral_id) or 'en'
+                await bot.send_message(
+                    referral_id,
+                    t(ref_lang, 'referral_reward', amount=f'{reward:.2f}', user=call.from_user.first_name),
+                    reply_markup=close(),
+                )
             purchases = purchases_before + 1
             level_before, _, _ = get_level_info(purchases_before, lang)
             level_after, discount, _ = get_level_info(purchases, lang)
@@ -1813,30 +1824,15 @@ async def checking_payment(call: CallbackQuery):
                     except Exception:
                         pass
 
-                if referral_id and TgConfig.REFERRAL_PERCENT != 0:
-                    referral_percent = TgConfig.REFERRAL_PERCENT
-                    referral_operation = round((referral_percent/100) * operation_value, 2)
-                    update_balance(referral_id, referral_operation)
+                if referral_id and TgConfig.REFERRAL_PERCENT:
+                    reward = round(price * TgConfig.REFERRAL_PERCENT / 100, 2)
+                    update_balance(referral_id, reward)
                     ref_lang = get_user_language(referral_id) or 'en'
                     await bot.send_message(
                         referral_id,
-                        t(ref_lang, 'referral_reward', amount=referral_operation, user=call.from_user.first_name),
+                        t(ref_lang, 'referral_reward', amount=f'{reward:.2f}', user=call.from_user.first_name),
                         reply_markup=close(),
                     )
-
-                create_operation(user_id, operation_value, formatted_time)
-                update_balance(user_id, operation_value)
-                item_info_list = get_item_info(item_name)
-
-                if referral_id and TgConfig.REFERRAL_PERCENT != 0:
-                    referral_percent = TgConfig.REFERRAL_PERCENT
-                    referral_operation = round((referral_percent/100) * operation_value)
-                    update_balance(referral_id, referral_operation)
-                    await bot.send_message(referral_id,
-                                           f'✅ You received {referral_operation}€ '
-                                           f'from your referral {call.from_user.first_name}',
-                                           reply_markup=close())
-
 
                 create_operation(user_id, operation_value, formatted_time)
                 update_balance(user_id, operation_value)
@@ -1852,16 +1848,9 @@ async def checking_payment(call: CallbackQuery):
                     new_balance = buy_item_for_balance(user_id, price)
                     if gift_to:
                         add_bought_item(value_data['item_name'], value_data['value'], price, gift_to, formatted_time)
-                        add_bought_item(value_data['item_name'], f'Gifted to @{gift_name}', price, user_id, formatted_time)
+                        purchase_id = add_bought_item(value_data['item_name'], f'Gifted to @{gift_name}', price, user_id, formatted_time)
                     else:
-                        add_bought_item(value_data['item_name'], value_data['value'], price, user_id, formatted_time)
-
-
-                value_data = get_item_value(item_name)
-                if value_data:
-                    buy_item(value_data['id'], value_data['is_infinity'])
-                    new_balance = buy_item_for_balance(user_id, price)
-                    purchase_id = add_bought_item(value_data['item_name'], value_data['value'], price, user_id, formatted_time)
+                        purchase_id = add_bought_item(value_data['item_name'], value_data['value'], price, user_id, formatted_time)
 
                     purchases = select_user_items(user_id)
                     photo_desc = ''
@@ -2017,16 +2006,6 @@ async def checking_payment(call: CallbackQuery):
                     await bot.send_message(user_id, '❌ Item out of stock')
             else:
 
-
-
-                if referral_id and TgConfig.REFERRAL_PERCENT != 0:
-                    referral_percent = TgConfig.REFERRAL_PERCENT
-                    referral_operation = round((referral_percent/100) * operation_value)
-                    update_balance(referral_id, referral_operation)
-                    await bot.send_message(referral_id,
-                                           f'✅ You received {referral_operation}€ '
-                                           f'from your referral {call.from_user.first_name}',
-                                           reply_markup=close())
 
 
                 create_operation(user_id, operation_value, formatted_time)
