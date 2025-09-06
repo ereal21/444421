@@ -33,7 +33,7 @@ from bot.handlers.other import get_bot_user_ids, get_bot_info
 from bot.keyboards import (
     main_menu, categories_list, goods_list, subcategories_list, user_items_list, back, item_info,
     profile, rules, payment_menu, close, crypto_choice, crypto_invoice_menu, blackjack_controls,
-    blackjack_bet_input_menu, blackjack_end_menu, blackjack_history_menu, feedback_menu, feedback_reason_menu,
+    blackjack_bet_input_menu, blackjack_end_menu, blackjack_history_menu, feedback_menu,
     confirm_purchase_menu, games_menu, coinflip_menu, coinflip_side_menu,
     achievements_menu, coinflip_create_confirm_menu, coinflip_waiting_menu, coinflip_rooms_menu, coinflip_join_confirm_menu,
     crypto_choice_purchase, notify_categories_list, notify_subcategories_list, notify_goods_list)
@@ -66,10 +66,25 @@ def build_menu_text(user_obj, balance: float, purchases: int, streak: int, lang:
     )
 
 
-async def schedule_feedback(bot, user_id: int, lang: str) -> None:
-    """Send rating prompt one hour after purchase."""
-    await asyncio.sleep(60 * 60)
-    await bot.send_message(user_id, t(lang, 'rate_experience'), reply_markup=feedback_menu('feedback_rate'))
+async def request_feedback(bot, user_id: int, lang: str, item_name: str) -> None:
+    """Prompt user to rate service and product after purchase."""
+    user = await bot.get_chat(user_id)
+    username = f'@{user.username}' if user.username else user.full_name
+    TgConfig.STATE[f'{user_id}_feedback'] = {
+        'item': item_name,
+        'username': username,
+    }
+    await bot.send_message(
+        user_id,
+        t(lang, 'rate_service'),
+        reply_markup=feedback_menu('service_feedback'),
+    )
+
+
+async def schedule_feedback(bot, user_id: int, lang: str, item_name: str) -> None:
+    """Send feedback request after a 30-minute delay."""
+    await asyncio.sleep(1800)
+    await request_feedback(bot, user_id, lang, item_name)
 
 
 def build_subcategory_description(parent: str, lang: str) -> str:
@@ -374,68 +389,48 @@ async def blackjack_history_handler(call: CallbackQuery):
                                reply_markup=blackjack_history_menu(index, total))
 
 
-async def feedback_rate_handler(call: CallbackQuery):
+async def service_feedback_handler(call: CallbackQuery):
     bot, user_id = await get_bot_user_ids(call)
     rating = int(call.data.split('_')[2])
     lang = get_user_language(user_id) or 'en'
-    if rating <= 3:
-        TgConfig.STATE[f'{user_id}_pending_rating'] = rating
-        await bot.edit_message_text(
-            t(lang, 'ask_feedback_reason'),
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            reply_markup=feedback_reason_menu('feedback_reason', lang)
-        )
-    else:
-        await bot.edit_message_text(
-            t(lang, 'thanks_feedback'),
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id
-        )
-        username = f'@{call.from_user.username}' if call.from_user.username else call.from_user.full_name
-        await bot.send_message(
-            EnvKeys.OWNER_ID,
-            f'User {username} rated {rating}\u2b50'
-        )
-
-
-async def feedback_reason_handler(call: CallbackQuery):
-    bot, user_id = await get_bot_user_ids(call)
-    choice = call.data.split('_')[2]
-    lang = get_user_language(user_id) or 'en'
-    rating = TgConfig.STATE.pop(f'{user_id}_pending_rating', None)
-    if choice == 'yes' and rating is not None:
-        TgConfig.STATE[f'{user_id}_awaiting_comment'] = rating
-        await bot.edit_message_text(
-            t(lang, 'feedback_reason'),
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id
-        )
-    else:
-        await bot.edit_message_text(
-            t(lang, 'thanks_feedback'),
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id
-        )
-        username = f'@{call.from_user.username}' if call.from_user.username else call.from_user.full_name
-        await bot.send_message(
-            EnvKeys.OWNER_ID,
-            f'User {username} rated {rating}\u2b50'
-        )
-
-
-async def feedback_text_handler(message: Message):
-    bot, user_id = await get_bot_user_ids(message)
-    rating = TgConfig.STATE.pop(f'{user_id}_awaiting_comment', None)
-    if rating is None:
+    data = TgConfig.STATE.get(f'{user_id}_feedback')
+    if not data:
         return
-    lang = get_user_language(user_id) or 'en'
-    await bot.send_message(user_id, t(lang, 'thanks_feedback'))
-    username = f'@{message.from_user.username}' if message.from_user.username else message.from_user.full_name
-    await bot.send_message(
-        EnvKeys.OWNER_ID,
-        f'User {username} rated {rating}\u2b50 and said: {message.text}'
+    data['service'] = rating
+    TgConfig.STATE[f'{user_id}_feedback'] = data
+    await bot.edit_message_text(
+        t(lang, 'rate_product'),
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        reply_markup=feedback_menu('product_feedback'),
     )
+
+
+async def product_feedback_handler(call: CallbackQuery):
+    bot, user_id = await get_bot_user_ids(call)
+    rating = int(call.data.split('_')[2])
+    lang = get_user_language(user_id) or 'en'
+    data = TgConfig.STATE.pop(f'{user_id}_feedback', None)
+    if not data:
+        return
+    service_rating = data.get('service')
+    item = data.get('item')
+    username = data.get('username')
+    try:
+        await bot.delete_message(call.message.chat.id, call.message.message_id)
+    except Exception:
+        pass
+    await bot.send_message(user_id, t(lang, 'thanks_feedback'))
+    try:
+        owner_id = int(EnvKeys.OWNER_ID) if EnvKeys.OWNER_ID else None
+    except (TypeError, ValueError):
+        owner_id = None
+    if owner_id:
+        text = (
+            f"{username} įvertino aptarnavimą {service_rating}/5 ir produkto kokybę {rating}/5, "
+            f"jie nusipirko \"{item}\""
+        )
+        await bot.send_message(owner_id, text, reply_markup=close())
 
 
 async def start_blackjack_game(call: CallbackQuery, bet: int):
@@ -1237,7 +1232,7 @@ async def buy_item_callback_handler(call: CallbackQuery):
             TgConfig.STATE.pop(f'{user_id}_promo_applied', None)
             recipient = gift_to or user_id
             recipient_lang = get_user_language(recipient) or lang
-            asyncio.create_task(schedule_feedback(bot, recipient, recipient_lang))
+            asyncio.create_task(schedule_feedback(bot, recipient, recipient_lang, value_data['item_name']))
             return
 
             if not gift_to:
@@ -2001,7 +1996,7 @@ async def checking_payment(call: CallbackQuery):
 
                     recipient = gift_to or user_id
                     recipient_lang = get_user_language(recipient) or lang
-                    asyncio.create_task(schedule_feedback(bot, recipient, recipient_lang))
+                    asyncio.create_task(schedule_feedback(bot, recipient, recipient_lang, value_data['item_name']))
                 else:
                     await bot.send_message(user_id, '❌ Item out of stock')
             else:
@@ -2218,12 +2213,10 @@ def register_user_handlers(dp: Dispatcher):
                                        lambda c: c.data.startswith('coinflip_room_'))
     dp.register_callback_query_handler(coinflip_join_handler,
                                        lambda c: c.data.startswith('coinflip_join_'))
-    dp.register_callback_query_handler(feedback_rate_handler,
-                                       lambda c: c.data.startswith('feedback_rate_'), state='*')
-    dp.register_callback_query_handler(feedback_reason_handler,
-                                       lambda c: c.data.startswith('feedback_reason_'), state='*')
-    dp.register_message_handler(feedback_text_handler,
-                                lambda m: TgConfig.STATE.get(f'{m.from_user.id}_awaiting_comment'), state='*')
+    dp.register_callback_query_handler(service_feedback_handler,
+                                       lambda c: c.data.startswith('service_feedback_'), state='*')
+    dp.register_callback_query_handler(product_feedback_handler,
+                                       lambda c: c.data.startswith('product_feedback_'), state='*')
     dp.register_callback_query_handler(bought_items_callback_handler,
                                        lambda c: c.data == 'bought_items', state='*')
     dp.register_callback_query_handler(back_to_menu_callback_handler,
