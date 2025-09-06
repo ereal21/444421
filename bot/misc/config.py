@@ -14,7 +14,7 @@ class TgConfig(ABC):
     HELPER_URL: Final = '@Karunele'
     PRICE_LIST_URL: Final = 'https://t.me/+iXbi98gT0v5lOTNk'
     GROUP_ID: Final = -988765433
-    REFERRAL_PERCENT = 7
+    REFERRAL_PERCENT = 10
     PAYMENT_TIME: Final = 900
     RULES: Final = 'insert your rules here'
     START_PHOTO_PATH: Final = r'C:\Users\Administrator\Downloads\photo_2025-08-17_23-09-19.jpg'
