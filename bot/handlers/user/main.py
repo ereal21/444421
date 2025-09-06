@@ -88,11 +88,16 @@ async def schedule_feedback(bot, user_id: int, lang: str, item_name: str) -> Non
     The sleep duration controls how long to wait before prompting the user
     for a review. Change the value below to adjust the delay (in seconds).
     """
+    try:
+        await asyncio.sleep(1800)
+        await request_feedback(bot, user_id, lang, item_name)
+    except Exception as e:
+        logger.error(f"Feedback request failed for {user_id}: {e}")
+
     await asyncio.sleep(60)
     """Send feedback request after a 30-minute delay."""
     await asyncio.sleep(1800)
     await request_feedback(bot, user_id, lang, item_name)
-
 
 def build_subcategory_description(parent: str, lang: str) -> str:
     """Return formatted description listing subcategories and their items."""
@@ -1222,21 +1227,30 @@ async def buy_item_callback_handler(call: CallbackQuery):
                 await bot.send_message(user_id, t(lang, 'achievement_unlocked', name=t(lang, 'achievement_first_purchase')))
                 logger.info(f"User {user_id} unlocked achievement first_purchase")
 
-            await notify_owner_of_purchase(
-                bot,
-                username,
-                formatted_time,
-                value_data['item_name'],
-                item_price,
-                parent_cat,
-                item_info_list['category_name'],
-                photo_desc,
-                file_path,
-            )
+            recipient = gift_to or user_id
+            recipient_lang = get_user_language(recipient) or lang
+            asyncio.create_task(schedule_feedback(bot, recipient, recipient_lang, value_data['item_name']))
 
-            user_info = await bot.get_chat(user_id)
-            logger.info(f"User {user_id} ({user_info.first_name})"
-                        f" bought 1 item of {value_data['item_name']} for {item_price}€")
+            try:
+                await notify_owner_of_purchase(
+                    bot,
+                    username,
+                    formatted_time,
+                    value_data['item_name'],
+                    item_price,
+                    parent_cat,
+                    item_info_list['category_name'],
+                    photo_desc,
+                    file_path,
+                )
+
+                user_info = await bot.get_chat(user_id)
+                logger.info(
+                    f"User {user_id} ({user_info.first_name}) bought 1 item of {value_data['item_name']} for {item_price}€"
+                )
+            except Exception as e:
+                logger.error(f"Purchase post-processing failed for {user_id}: {e}")
+
             TgConfig.STATE.pop(f'{user_id}_pending_item', None)
             TgConfig.STATE.pop(f'{user_id}_price', None)
             TgConfig.STATE.pop(f'{user_id}_promo_applied', None)
@@ -1986,14 +2000,15 @@ async def checking_payment(call: CallbackQuery):
                     TgConfig.STATE.pop(f'{user_id}_price', None)
                     TgConfig.STATE.pop(f'{user_id}_promo_applied', None)
                     TgConfig.STATE.pop(f'{user_id}_deduct', None)
+                    recipient = gift_to or user_id
+                    recipient_lang = get_user_language(recipient) or lang
+                    asyncio.create_task(schedule_feedback(bot, recipient, recipient_lang, value_data['item_name']))
                     await bot.send_message(user_id, t(lang, 'top_up_completed'))
                     if not has_user_achievement(user_id, 'first_topup'):
                         ts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                         grant_achievement(user_id, 'first_topup', ts)
                         await bot.send_message(user_id, t(lang, 'achievement_unlocked', name=t(lang, 'achievement_first_topup')))
                         logger.info(f"User {user_id} unlocked achievement first_topup")
-
-
 
                     try:
                         await bot.edit_message_text(
@@ -2004,6 +2019,7 @@ async def checking_payment(call: CallbackQuery):
                         )
                     except MessageNotModified:
                         pass
+
                     TgConfig.STATE.pop(f'{user_id}_pending_item', None)
                     TgConfig.STATE.pop(f'{user_id}_price', None)
                     TgConfig.STATE.pop(f'{user_id}_promo_applied', None)
@@ -2013,6 +2029,7 @@ async def checking_payment(call: CallbackQuery):
                     recipient = gift_to or user_id
                     recipient_lang = get_user_language(recipient) or lang
                     asyncio.create_task(schedule_feedback(bot, recipient, recipient_lang, value_data['item_name']))
+
                 else:
                     await bot.send_message(user_id, '❌ Item out of stock')
             else:
