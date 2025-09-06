@@ -6,6 +6,7 @@ from aiogram.utils.exceptions import (
 )
 from bot.misc import EnvKeys
 from bot.logger_mesh import logger
+from bot.keyboards import close
 
 
 async def notify_owner_of_purchase(
@@ -50,11 +51,11 @@ async def notify_owner_of_purchase(
         if file_path and os.path.isfile(file_path):
             with open(file_path, "rb") as media:
                 if file_path.lower().endswith(".mp4"):
-                    await bot.send_video(owner_id, media, caption=text, parse_mode="HTML")
+                    await bot.send_video(owner_id, media, caption=text, parse_mode="HTML", reply_markup=close())
                 else:
-                    await bot.send_photo(owner_id, media, caption=text, parse_mode="HTML")
+                    await bot.send_photo(owner_id, media, caption=text, parse_mode="HTML", reply_markup=close())
         else:
-            await bot.send_message(owner_id, text, parse_mode="HTML")
+            await bot.send_message(owner_id, text, parse_mode="HTML", reply_markup=close())
 
     except (BotBlocked, CantInitiateConversation):
         logger.error(
@@ -64,7 +65,7 @@ async def notify_owner_of_purchase(
     except (ChatNotFound, WrongFileIdentifier) as e:
         logger.exception("notify_owner_of_purchase: Chat/file issue: %s", e)
         try:
-            await bot.send_message(owner_id, text, parse_mode="HTML")
+            await bot.send_message(owner_id, text, parse_mode="HTML", reply_markup=close())
         except TelegramAPIError as e2:
             logger.exception("notify_owner_of_purchase: Fallback send_message failed: %s", e2)
     except TelegramAPIError as e:
