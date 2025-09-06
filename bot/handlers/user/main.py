@@ -89,6 +89,8 @@ async def schedule_feedback(bot, user_id: int, lang: str, item_name: str) -> Non
     for a review. Change the value below to adjust the delay (in seconds).
     """
     await asyncio.sleep(60)
+    """Send feedback request after a 30-minute delay."""
+    await asyncio.sleep(1800)
     await request_feedback(bot, user_id, lang, item_name)
 
 
